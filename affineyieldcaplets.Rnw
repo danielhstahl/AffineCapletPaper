@@ -1,0 +1,474 @@
+\documentclass[12pt]{article}
+\usepackage[letterpaper]{geometry}
+\geometry{top=1.0in, bottom=1.0in, left=1.0in, right=1.0in}
+%\usepackage[margin=.9in]{geometry}
+\usepackage{probstat}
+\usepackage{amsfonts}
+\usepackage{hyperref}
+\usepackage{setspace}
+\usepackage{amsmath}
+\usepackage{algorithm2e}
+\setstretch{1} 
+
+\makeatletter
+\renewcommand\section{\@startsection{section}{1}{\z@}%
+                                  {-3.5ex \@plus -1ex \@minus -.2ex}%
+                                  {2.3ex \@plus.2ex}%
+                                  {\normalfont\large\bfseries}}
+\makeatother
+
+%\setlength{\parindent}{1cm}
+\usepackage[utf8]{inputenc}
+\usepackage[nogin]{Sweave}
+\usepackage{amsthm}
+\usepackage{tikz,pgfplots}
+\usepackage{fancyhdr}
+\usepackage{times}
+\fancyhf{}
+\pgfplotsset{compat=1.6}
+\renewcommand{\headrulewidth}{0pt} 
+\renewcommand{\footrulewidth}{0pt} 
+\setlength\headsep{0.333in}
+%\setlength{\parindent}{1cm}
+\newcommand{\bibent}{\noindent \hangindent 40pt}
+%\newcommand{\par}{\indent}
+\newenvironment{workscited}{\newpage \begin{center} \large{\textbf{Works Cited}} \end{center}}{\newpage }
+
+\newtheorem{bond}{Proposition}
+\theoremstyle{definition}
+\newtheorem{mydef}{Definition}
+\theoremstyle{remark}
+\newtheorem{rem}{Remark}
+%%%%% edit the next few lines using your information
+%
+\chead{}
+\lhead{Thesis}
+\rhead{Daniel Stahl \thepage}
+\author{Daniel Stahl}
+\title{Efficient Pricing of Caplets under a Single Factor Affine Yield Interest Rate Process}
+\pagestyle{fancy}
+
+
+\def\R{{\sf R}}
+\def\Rstudio{{\sf R}Studio}
+
+%%%% some things to improve how R output looks
+
+\def\myRuleColor{\color{black!50!white}}
+
+\DefineVerbatimEnvironment{Sinput}{Verbatim} {fontsize=\small} 
+\DefineVerbatimEnvironment{Soutput}{Verbatim} {fontsize=\small} 
+\fvset{listparameters={\setlength{\topsep}{0pt}}} 
+\renewenvironment{Schunk}{\vspace{\topsep}}{\vspace{\topsep}} 
+
+\colorlet{GrayBoxGray}{blue!7}
+\makeatletter\newenvironment{graybox}{%
+   \begin{lrbox}{\@tempboxa}\begin{minipage}{\textwidth}}{\end{minipage}\end{lrbox}%
+   \colorbox{GrayBoxGray}{\usebox{\@tempboxa}}
+}\makeatother
+
+\renewenvironment{Schunk}{
+
+\begin{graybox}}{\end{graybox}
+
+}
+\makeatletter
+\renewcommand*\env@matrix[1][*\c@MaxMatrixCols c]{%
+  \hskip -\arraycolsep
+  \let\@ifnextchar\new@ifnextchar
+  \array{#1}}
+\makeatother
+\newlength{\tempfmlength}
+\newsavebox{\fmbox}
+\newenvironment{fmpage}[1]
+     {
+   \medskip
+   \setlength{\tempfmlength}{#1}
+   \begin{lrbox}{\fmbox}
+     \begin{minipage}{#1}
+     \vspace*{.02\tempfmlength}
+     \hfill
+     \begin{minipage}{.95 \tempfmlength}}
+     {\end{minipage}\hfill
+     \vspace*{.015\tempfmlength}
+     \end{minipage}\end{lrbox}\fbox{\usebox{\fmbox}}
+   \medskip
+   }
+
+
+\begin{document}
+
+\SweaveOpts{concordance=TRUE}
+\setlength{\parindent}{0pt}
+%\parindent=0pt
+%\parskip=3mm
+
+
+%%%% some set-up for Sweave
+
+\SweaveOpts{prefix.string=fig}
+\SweaveOpts{highlight=T}
+\SweaveOpts{tidy=T}
+\SweaveOpts{pdf=T}
+\SweaveOpts{strip.white=T}
+\SweaveOpts{keep.source=T}
+
+
+%%% R stuff to execute at the beginning of the document.
+%%% Note: even default packages need to be required here.
+<<setup,echo=F>>=
+require(grDevices)
+require(datasets)
+require(stats)
+require(lattice)
+require(grid)
+require(survival)
+require(rgl)
+require(fastR)
+options(keep.blank.line=FALSE)
+options(width=90)
+xyplot <- function(...) { print(lattice::xyplot(...)) }
+bwplot <- function(...) { print(lattice::bwplot(...)) }
+histogram <- function(...) { print(lattice::histogram(...)) }
+barchart <- function(...) { print(lattice::barchart(...)) }
+densityplot <- function(...) { print(lattice::densityplot(...)) }
+qqmath <- function(...) { print(lattice::qqmath(...)) }
+@ 
+
+%%%%%% main content goes below here
+%\pagestyle{empty}
+
+%\begin{abstract}
+%Standard pricing for caplets assumes lognormal forward rates. Under this assumption caplets can be analytically priced; however the convenience of an analytical solution is frequently unjustified by empirical data.  Given the widespread use of spot interest rate models, this paper attempts to rectify the issue by giving simple and efficient numerical methods to price caplets under any single factor affine yield interest rate process.
+%\end{abstract}
+\maketitle
+\setstretch{1.5}
+\section{Introduction}
+
+Standard pricing for caplets assumes lognormal forward rates. Under this assumption caplets can be analytically priced; however the convenience of an analytical solution is frequently unjustified by empirical data.  The caplets priced in this way are still useful since one can generate an implied forward volatility with which to compute other derivative prices, but then caplet prices are essentially state variables instead of derivative securities on some more primitive state variable.  A more theoretically appealing model would be one which correctly prices caplets to begin with, much like the Heston model attempts to explain the volatility smile found with equity options.  Given the widespread use of spot interest rate models, this paper attempts to rectify the issue by giving simple and efficient numerical methods to price caplets under any single factor affine yield interest rate process.
+
+\section{Assumptions and Prelimaries}
+\subsection{Dynamics of Interest Rates}
+Assume the existence of a risk-neutral measure under which the spot interest rate process satisfies the following SDE:
+\[dr_t=\alpha(r_t, t)+\sigma(r_t, t)dW_t\]
+Where \(\alpha : \mathbb{R}^2 \to \mathbb{R}\) and \(\sigma: \mathbb{R}^2 \to \mathbb{R}_{+} \) satisfy \(\mathbb{E}[ (\cdot)^2 ] < \infty\) .  
+In addition, let the interest rate process be affine.
+\begin{mydef}
+An interest rate process is said to be \emph{affine} if \(\alpha(r_t, t)=\mu(t)+\gamma(t) r_t\) and \(\sigma^2(r_t, t)=\omega(t)+\xi(t) r_t\) for some \(\mu \), \( \gamma \), \(\omega \), \(\xi : \mathbb{R}_{+} \to \mathbb{R}\)
+\label{Definition:def1}
+\end{mydef}
+\subsection{Bonds}
+\begin{bond}
+Let \(r_t\) satisfy Definition \ref{Definition:def1}.  Then
+\[f(r_0, 0)=e^{-A(0, T)r_0+C(0, T)}\] is the price of a zero coupon bond with principal equal to a dollar.
+\label{Proposition:prop1}
+\end{bond}
+\begin{proof}
+Since a risk-neutral measure exists, any derivative security may be priced as the discounted expected value of its payoff under this measure.  Therefore \[f(r_0, 0)=\mathbb{E}\left[e^{-\int_0 ^T r_t dt}\right]\]  
+By Feynman-Kac, \(e^{-\int _0 ^ t r ds} f(r, t)\) (with dummy variable \(r\)) then satisfies the following PDE:
+\begin{equation*}
+\left\{
+\begin{array}{rl}
+f_t+f_{r} \alpha(r, t)+f_{rr} \frac{\sigma^2 (r, t)}{2} -rf=0 \\
+f(r, T)=1\,\,\forall r
+\end{array}
+\right.
+\end{equation*}
+\begin{equation}
+=\left\{
+\begin{array}{rl}
+f_t+f_{r} (\mu+\gamma r)+f_{rr} \frac{(\omega+\xi r)}{2} -rf=0 \\
+f(r, T)=1\,\,\forall r
+\end{array}
+\right.
+\label{Equation:eq3}
+\end{equation}
+Substituting Proposition \ref{Proposition:prop1} into this PDE, 
+\[(-A_t r+C_t)f(r, t)-A f(r, t)(\mu+\gamma r)+A^2 f(r, t)\frac{(\omega+\xi r)}{2}-rf(r, t) =0\]
+\[-A_t r+C_t-A (\mu+\gamma r)+A^2 \frac{(\omega+\xi r)}{2}-r=0\]
+For the above expression to hold, the following ODEs must hold:
+\begin{equation}
+\left\{
+\begin{array}{rl}
+A^2 \frac{\xi}{2}-\gamma A-1 =A_t \\
+A(T, T)=0
+\label{Equation:eqode}
+\end{array}
+\right.
+\end{equation}
+\begin{equation}
+\left\{
+\begin{array}{rl}
+C_t =\mu A -A^2 \frac{\omega}{2} \\
+C(T, T)=0
+\end{array}
+\right.
+\label{Equation:eq10}
+\end{equation}
+Clearly these ODEs have unique solututions, from which it follows that 
+\[f(r_0, 0)=e^{-A(0, T)r_0+C(0, T)}\]
+\end{proof}
+\begin{rem}
+If the ODEs cannot be solved analytically it is computationally trivial to solve them numerically.
+\end{rem}
+\begin{bond}
+Let \(r_t\) satisfy Definition \ref{Definition:def1}.  Then
+\[df(r_t, t)=f(r_t, t)r_t dt-A(t, T) \sigma(r_t, t) f(r_t, t) dW_t \]
+\label{Proposition:prop2}
+\end{bond}
+\begin{proof}
+By Ito's Lemma, 
+\[df(r_t, t)=f_t+f_{r} \alpha(r_t, t)+f_{rr} \frac{\sigma^2 (r_t, t)}{2} +f_r \sigma(r_t, t) dW_t \]
+By Feynman-Kac, \[f_t+f_{r} \alpha(r, t)+f_{rr} \frac{\sigma^2 (r, t)}{2}=rf(r, t)\]
+Substituting this into the differential of \(f(r_t, t)\), 
+\[df(r_t, t)=r_tf(r_t, t) +f_r \sigma(r_t, t) dW_t\]
+By Proposition \ref{Proposition:prop1}, 
+\[f_r=-A(t, T) f(r_t, t) \]
+This implies the following differential:
+\[df(r_t, t)=r_tf(r_t, t)dt  -A(t, T) f(r_t, t)\sigma(r_t, t) dW_t\]
+\end{proof}
+\subsection{Caplet}
+\begin{mydef}
+A caplet is a derivative security with payoff function
+\[(r_T-k)\mathbb{I}_{r_T > k},\,\,k \in \mathbb{R} \]
+\label{Definition:def2}
+\end{mydef}
+\begin{bond}
+Let \(r_t\) satisfy Definition \ref{Definition:def1} and let the current price of a caplet be \(c(r_0, 0)\). Then
+\begin{equation}c(r_0, 0)=f(r_0, 0)\left(\mathbb{E}^{F} \left[r_T\mathbb{I}_{r_T >k} \right] -\mathbb{E}^{F} \left[\mathbb{I}_{r_T >k}\right]\right) \label{Equation:eq1}\end{equation} 
+Where the probability is taken under the forward measure and the dynamics of \(r_t\) under this measure are
+\begin{equation}dr_t=\left(\alpha(r_t, t)-\sigma^2 (r_t, t)A(t, T)\right)dt+
+\sigma(r_t, t) dW_t^F \label{Equation:eq2}\end{equation}
+\label{Proposition:prop3}
+\end{bond}
+\begin{proof}
+Since a risk-neutral measure exists, 
+\[c(r_0, 0)=\mathbb{E}\left[e^{-\int_0 ^ T r_t dt} \left(r_T\mathbb{I}_{r_T >k} -k\mathbb{I}_{r_T >k} \right) \right] \]
+Defining a Radon-Nikodym derivative
+\[Z_t:=\frac{e^{-\int_0 ^ t r_s ds} f(r_t, t)}{f(r_0, 0)}\]
+Substituting into the pricing formula, 
+\[c(r_0, 0)=f(r_0, 0)\mathbb{E}\left[Z_T \left(r_T\mathbb{I}_{r_T >k} -k \mathbb{I}_{r_T >k} \right) \right] \]
+By Proposition \ref{Proposition:prop2}, the volatility of \(Z_t\) is \(-A(t, T) Z_t\sigma(r_t, t)\).
+By Girsonov's theorem, 
+\(W_t^F := W_t +  \int_0 ^ t A(s, T) \sigma(r_s, s) ds \)
+is a Brownian Motion under the forward measure and the pricing formula can be written as 
+\[c(r_0, 0)=f(r_0, 0)\mathbb{E}^F\left[\left(r_T\mathbb{I}_{r_T >k} -k\mathbb{I}_{r_T >k} \right)\right] \]
+Recalling that \(dr_t=\alpha(r_t, t)dt+\sigma(r_t, t)dW_t \), under the forward measure \(r_t\) has the following dynamics:
+\[dr_t=\alpha(r_t, t)dt+\sigma(r_t, t)(dW_t ^F - A(t, T)\sigma(r_t, t) dt) \]
+\[=\left(\alpha(r_t, t)-\sigma^2 (r_t, t)A(t, T)\right)dt+
+\sigma(r_t, t) dW_t^F \]
+\end{proof}
+\section{Computation of Caplets}
+\begin{bond}
+In the case that 
+\begin{equation} dr_t=\alpha(b-r_t)dt+\sigma dW_t, \,\,\alpha,\,\, b,\,\, \sigma\,\,\in \mathbb{R}_{+} \label{Equation:eq6} \end{equation}
+The price of the caplet is
+\[c(r_0, 0)=f(r_0, 0)\left( \sigma_r \phi(z)+  (\mu_r-k)(1-\Phi(z))  \right)\] 
+Where
+\[\mu _r = \left(e^{-\alpha T} r_0-\sigma^2\left(\frac{1}{\alpha^2}-\frac{1}{2\alpha^2}-\left(\frac{e^{-\alpha T}}{\alpha^2}-\frac{e^{-2\alpha T}}{2\alpha^2} \right)\right)+ b \left(1-e^{-\alpha T} \right) \right)\]
+\[\sigma_r= \sqrt{\left(1 -e^{-2\alpha T}\right)\frac{\sigma^2}{2\alpha}}\]
+\[z=\frac{k-\mu_r}{\sigma_r}\]
+\[\Phi(x)=\int_{-\infty} ^ x \frac{1}{\sqrt{2\pi}}e^{-\frac{y^2}{2}} dy \]
+\[\phi(x)=\frac{1}{\sqrt{2\pi}}e^{-\frac{x^2}{2}} \]
+\label{Proposition: prop5}
+\end{bond}
+\begin{proof}
+The proof is given in the appendix.
+\end{proof}
+\begin{rem} When \(r_t\) satisfies Equation \ref{Equation:eq6}, \(r_t\) is refered to as the Vasicek model.\end{rem}
+If \(r_t\) satisfies Definition \ref{Definition:def1} such that \(\xi (t) \neq 0\), there generally exists no analytical density from which to calculate the (forward) probability of the interest rate terminating in the money; necessitating the use of numerical methods to find a solution.  However the usual numerical solutions for option pricing in this scenario are either difficult or inefficient.  
+\begin{rem} When \(\mu(t)\), \(\gamma(t)\), \(\xi(t)\) are constants and \(\omega=0\) the resulting interest rate process is called the Cox Ingersoll Ross model.   \end{rem}
+\subsection{Monte Carlo}
+Monte Carlo methods for solving Equation \ref{Equation:eq1} are subject to discretization error since the analytical distribution is unkown, necessitating an Euler-like simulation scheme. In addition, to simulate Equation \ref{Equation:eq2} requires computing \(A(t, T)\) at each time node.  In fact, it would be more efficient to simply simulate the risk-neutral process.  However, simulating the risk-neutral process compounds the discretization error since the integral must be approximated by a sum.  
+\subsection{PDE Methods}
+Another common numerical method is to discretize Equation \ref{Equation:eq3} and solve the PDE numerically.  Unfortunately the boundary conditions are difficult to formulate for square root diffusions and a large mesh would be required to gain acceptable accuracy (especially for interest rates near zero).
+\subsection{Alternate PDE solution}
+\begin{bond}
+Let \(p(r, t) := d\mathbb{P}^F (r_t \leq r)\) be known. Then \(c(0, r_0)\) can be priced.
+ \label{Proposition:prop4}
+\end{bond}
+\begin{proof}
+\[f(r_0, 0)\mathbb{E}[(r_T-k)\mathbb{I}_{r_T > k}]=f(r_0, 0)\left(\int_ k ^\infty r p(r, t) dr-\int_k ^\infty k p(r, t) dr\right)\]
+\end{proof}
+By Proposition \ref{Proposition:prop4}, Equation \ref{Equation:eq1} can be approximately solved if the probability density of \(r_t\) under the forward measure can be numerically approximated.
+By the Fokker-Planck equation, \(p(r, t) \) satisfies the PDE
+\begin{equation} \left \{\begin{array}{rl} p_t=-\frac{\partial}{\partial r} p(r, t) \left(\alpha(r, t)-\sigma^2(r, t)A(t, T)\right)+\frac{\partial ^2}{\partial r^2} \frac{1}{2}p(r, t)\sigma^2 (r, t) \\
+p(r, 0)=\delta(r)
+\end{array}
+\right.
+\end{equation}
+This equation is far simpler to solve numerically than Equation \ref{Equation:eq3} since the boundary conditions are necessarily zero.  However, the initial condition is not easily discretized.
+\begin{bond}
+Let \(p(r, t)\) exist.  Then
+\(F(r, t):= \mathbb{P} ^F (r_t <r) \) satisfies 
+\begin{equation} \left \{ \begin{array}{rl} 
+F_t=-\left(\alpha(r, t)-\sigma^2(r, t)A(t, T)-\frac{1}{2} \xi \right) F_r +\frac{1}{2} \sigma^2 (r, t) F_{rr} \\
+F(r, 0)=\mathbb{I}_{r>r_0}
+\end{array} 
+\right.
+\label{Equation:eq7}
+\end{equation}
+\label{Proposition:prop6}
+\end{bond}
+\begin{proof}
+\[\frac{\partial}{\partial r} F(r, t)=p(r, t)\]
+\begin{equation*} \implies \left \{\begin{array}{rl} F_{tr}=-\frac{\partial}{\partial r} F_r \left(\alpha(r, t)-\sigma^2(r, t)A(t, T)\right)+\frac{\partial ^2}{\partial r^2} \frac{1}{2}F_r\sigma^2 (r, t) \\
+F_r =\delta(r)
+\end{array}
+\right.
+\end{equation*}
+Integrating with respect to \(r\), 
+\begin{equation*} \left \{\begin{array}{rl} F_{t}=- F_r \left(\alpha(r, t)-\sigma^2(r, t)A(t, T)\right)+\frac{\partial }{\partial r} \frac{1}{2}F_r\sigma^2 (r, t) +c(t) \\
+F(r, 0)=\mathbb{I}_{r>r_0}
+\end{array}
+\right.
+\end{equation*}
+Since at the boundaries \(\lim_{r\to \infty} F(r, t)=1\) and \(\lim_{r \to -\infty} F(r, t)=0\), \(F_t\) is equal to zero at the boundaries, which implies that \(c(t)\) is also zero.
+\begin{equation*} \left \{\begin{array}{rl} F_{t}=- F_r \left(\alpha(r, t)-\sigma^2(r, t)A(t, T)\right)+ \frac{1}{2}F_rr\sigma^2 (r, t) +\frac{1}{2}\xi F_r \\
+F(r, 0)=\mathbb{I}_{r>r_0}
+\end{array}
+\right.
+\end{equation*}
+\begin{equation*} \left \{ \begin{array}{rl} 
+F_t=-\left(\alpha(r, t)-\sigma^2(r, t)A(t, T)-\frac{1}{2} \xi \right) F_r +\frac{1}{2} \sigma^2 (r, t) F_{rr} \\
+F(r, 0)=\mathbb{I}_{r>r_0}
+\end{array} 
+\right.
+\end{equation*}
+\end{proof}
+\section{Numerical Results}
+To approximately solve Equation \ref{Equation:eq7}, I use an implicit finite difference scheme.  The initial condition is discretized by \(F(r, 0)=0 \,\, \forall r<r_0\), \(F(r, 0)=1 \,\, \forall r>r_0\), and \(F(r, 0)=.5,\,\, r=r_0\).  The functions  \(A(t, T)\) and \(C(t, T)\) are approximated via an Euler discretization scheme in which the time step is the same size as the one used for the numerical solution to Equation \ref{Equation:eq7}.  Discretizing Equation \ref{Equation:eq7} results in a vector of approximate values of \(F(r, T)\) denoted \(\tilde{F}(r, T)\) corresponding to each discrete node of \(r\).  The approximation of the forward expectation therefore is computed as follows:
+\[\sum_ {i=g(k)} ^m \left(r_i+\frac{r_{i+1}-r_{i}}{2}-k\right)\left(\tilde{F}(r_{i+1}, T)-\tilde{F}(r_{i}, T)\right) \]
+Where \(g(k)\) is a function mapping the value of \(k\) to the smallest value of \(i\) such that \(r_i >k\).
+The complete algorithm for computing the price of the caplet is given in the appendix.
+\subsection{Vasicek}
+Since an analytical solution exists for the price of a caplet when \(r_t\) satisfies Equation \ref{Equation:eq6}, that is the interest rate process that is initially tested.
+Using parameter values \(\alpha=1\), \(b=.1\), \(\sigma=.03\), \(r_0=.10\), \(k=.10\),  and \(T=1\), the analytical solution is \(.00703998\).  Space is discretized with \(m\) nodes on \([-.1,\,\, .5]\) and time with \(n\) nodes.
+\begin{center}
+\begin{tabular}{l|l|l|l|l}
+& \(n=60,\)& \(n=150,\) &\(n=300,\) & \(n= 600, \)\\
+& \( m=72\) & \(m=180\) & \(m=360\) & \(m=720\) \\
+\hline
+Value & .0069681 & .00702166 & .00703268 & .00703681\\
+Time (s) & 0 & 0 &  .031  & .109 \\
+Relative error & 1.02108 \% & .26032 \% & .10373 \%  & .04514 \% \\
+Decrease in error &  & 3.9224 & 2.5096 &  2.2980
+\end{tabular}
+\end{center}
+\subsection{Cox Ingersoll Ross}
+Subsequently, a Cox Ingersoll Ross process 
+\[dr_t=\alpha(b-r_t)dt+\sigma \sqrt{r_t}dW_t,\,\,\alpha, \,\,b,\,\, \sigma \in \mathbb{R}_{+}\]
+is tested with parameter values \(\alpha=1\), \(b=.1\), \(\sigma=.12\), \(r_0=.10\), \(k=.10\), \(t=0\), and \(T=1\).  Space is discretized on \([0,\,\, .5]\).
+\begin{center}
+\begin{tabular}{l|l|l|l|l|l}
+& \(n=60,\)& \(n=150,\) &\(n=300,\) & \(n= 600, \) & \(n=120000\) \\
+& \( m=60\) & \(m=150\) & \(m=300\) & \(m=600\)&  \(m=120000\) \\
+\hline
+Value & .00875845 & .00880975 & .00882109 & .00882562  & .00882935\\
+Time (s) & 0 & 0 &  .016  & .078  & 3759.36\\
+Relative error & .80300 \% & .22199 \% & .09355\%  & .04225 \% & --  \\
+Decrease in error &  & 3.6173 &2.3730 &  2.2142  &-- 
+\end{tabular}
+\end{center}
+Here the \(120000\) by \(120000\) mesh is considered the ``exact'' solution.   
+\section{Conclusion}
+The algorithm presented quickly and accurately prices caplets under the assumption that the spot interest rate follows a single factor affine yield process.  This technique gives greater flexibility to the pricing of caplets than analytical formulas based on the assumption of lognormal forward rates.       
+\appendix
+\section{Plots}
+The following plots should provide intuition into the numerical results.  The first is a surface plot of the solution to the transition density of a Cox Ingersoll Ross process, the second a cross section of the surface plot.
+
+\input{surf.tikz}
+
+\input{crosssection.tikz}
+
+\section{Proof of Proposition \ref{Proposition: prop5} }
+\begin{proof}
+If \(y \sim \mathcal{N}\left(\mu, \sigma^2\right) \), 
+\[\mathbb{E}\left[(y-k)\mathbb{I}_{y> k}\right]=\int_k ^\infty y \frac{1}{\sqrt{2\pi}\sigma} e^{-\frac{(y-\mu)^2}{2\sigma^2}} dy -k\int_k ^\infty \frac{1}{\sqrt{2\pi}\sigma} e^{-\frac{(y-\mu)^2}{2\sigma^2}}dy\]
+\[=\int_ \frac{k-\mu}{\sigma} ^\infty (\sigma x+\mu) \frac{1}{\sqrt{2\pi}} e^{-\frac{x^2}{2}} dx -k\int_ \frac{k-\mu}{\sigma} ^\infty \frac{1}{\sqrt{2\pi}} e^{-\frac{x^2}{2}} dx\]
+
+\[=\sigma \int_ \frac{k-\mu}{\sigma} ^\infty -d\left(\frac{1}{\sqrt{2\pi}} e^{-\frac{x^2}{2}}\right)+\mu \left(1-\Phi \left( \frac{k-\mu}{\sigma}\right)\right)-k\left(1-\Phi \left( \frac{k-\mu}{\sigma}\right) \right)\]
+\[=\sigma \phi\left(\frac{k-\mu}{\sigma}\right)+(\mu-k) \left(1-\Phi \left( \frac{k-\mu}{\sigma}\right)\right)\]
+
+By Ito's Lemma,
+\[d \left(e^{\alpha t} r_t\right)=\alpha e^{\alpha t}r_t dt + e^{\alpha t} \left(\alpha b-\sigma^2 A(t, T)-\alpha r_t \right) dt +e^{\alpha t} \sigma dW^F_t \]
+\[=e^{\alpha t} \left(\alpha b-\sigma^2 A(t, T)\right) dt +e^{\alpha t} \sigma dW^F_t \]
+\[e^{\alpha T} r_T= r_0 + \frac{1}{\alpha}\left(e^{\alpha T} -1\right) \alpha b-\sigma^2 \int _0^T e^{\alpha t}A(t, T) dt +\int _ 0 ^ T e^{\alpha t} \sigma dW^F_t \]
+\[r_T = e^{-\alpha T} r_0+ b \left(1-e^{-\alpha T}\right)-\sigma^2 \int _0^T e^{-\alpha (T-t)}A(t, T) dt+e^{-\alpha T} \int _ 0 ^ T e^{\alpha t} \sigma dW^F_t \]
+Let 
+\[X_t :=e^{-\alpha t} r_0-\sigma^2 \int _0^t e^{-\alpha (t-s)}A(s, T) ds+ b \left(1-e^{-\alpha t}\right)+  u\left(1 -e^{-2\alpha t}\right)\frac{\sigma^2}{4\alpha} \]
+For some \(u\in \mathbb{R}_+\) and 
+\[V_t:=e^{ur_t -uX_t}=e^{ue^{-\alpha t} \int _ 0 ^ t e^{\alpha s} \sigma dW^F_s -u^2\left(1 -e^{-2\alpha t}\right)\frac{\sigma^2}{4\alpha}}\]  
+
+By Ito's Lemma, 
+\[d V_t= V_t ue^{-\alpha t} e^{\alpha t} \sigma dW^F _t +V_t \frac{1}{2} u^2 e^{-2\alpha t} e^{2 \alpha t} \sigma ^2 dt -V_t u^2 \frac{\sigma^2}{2} dt\]
+\[=V_tu\sigma dW^F_t \]
+Since \(\mathbb{E}\left[\int_0 ^t u^2\sigma^2 V_t ^2 dt \right] < \infty\), \(V_t\) is a martingale under the forward measure and satisfies \(V_t (r_0, 0)=1\).  Therefore 
+
+\[\mathbb{E}^F[V_t]=1\]
+\[\mathbb{E}^F[e^{ur_t -uX_t}]=1\]
+\[\mathbb{E}^F [e^{ur_t}]=e^{uX_t}\]
+Comparing \(e^{uX_t}\) to the moment generating function of a normal random variable, it is clear 
+\[r_T \sim \mathcal{N} \left(e^{-\alpha T} r_0-\sigma^2 \int _0^T e^{-\alpha (T-t)}A(t, T) dt+ b \left(1-e^{-\alpha T}\right), \left(1 -e^{-2\alpha T}\right)\frac{\sigma^2}{2\alpha} \right) \]
+
+In this model the function \(A(t, T)\) satisfies Equation \ref{Equation:eqode} with \( \xi=0\), \(\gamma=-\alpha \), which has the solution 
+\[\frac{1-e^{-\alpha (T-t)}}{\alpha}\]
+\[\implies \sigma^2 \int _0^T e^{-\alpha (T-t)}A(t, T) dt=\sigma^2 \int _0^T \frac{e^{-\alpha(T-t)}}{\alpha} -\frac{e^{-2\alpha(T-t)}}{\alpha} dt \]
+\[=\sigma^2\left(\frac{1}{\alpha^2}-\frac{1}{2\alpha^2}-\left(\frac{e^{-\alpha T}}{\alpha^2}-\frac{e^{-2\alpha T}}{2\alpha^2} \right)\right)   \]
+
+Therefore 
+\[c(r_0, 0)=f(r_0, 0)\left( \sigma_r \phi(z)+  (\mu_r-k)(1-\Phi(z))  \right)\] 
+Where
+
+\[\mu _r = \left(e^{-\alpha T} r_0-\sigma^2\left(\frac{1}{\alpha^2}-\frac{1}{2\alpha^2}-\left(\frac{e^{-\alpha T}}{\alpha^2}-\frac{e^{-2\alpha T}}{2\alpha^2} \right)\right)+ b \left(1-e^{-\alpha T} \right) \right)\]
+\[\sigma_r= \sqrt{\left(1 -e^{-2\alpha T}\right)\frac{\sigma^2}{2\alpha}}\]
+\[z=\frac{k-\mu_r}{\sigma_r}\]
+
+
+
+
+\end{proof}
+
+\section{Algorithm for Pricing Caplets}
+
+\begin{algorithm}
+\KwData{\(r_0\), \(\mu\), \(\gamma\), \(\omega\), \(\xi\), \(t\), \(n\), \(m\), rmax, rmin}
+
+\KwResult{The numerical price of a caplet}
+\textbf{Define}: \(\Delta t=t/n\), \(\Delta r=(\text{rmax}-\text{rmin})/m\)
+
+Adjust rmax, rmin such that \(r_0 \Delta r=p\) is an integer
+
+Set a vector \(v\) such that \(v[1:p-1]=0\), \(v[p]=.5\), \(v[p+1: n]=1\)
+
+\For{i = 1:n-1}{
+  \(A[i+1]=A[i]-\frac{\xi \Delta t}{2}A[i]^2+\gamma A[i] \Delta t+\Delta t \)
+  
+  \(C[i+1]=C[i]-\left(A[i]\mu \Delta t -A[i]^2 \frac{\omega \Delta t}{2}\right) \)
+  }
+  \For{i = 1:n-1}{
+    \For{j=1:m} {
+      \(a[j]=(((\mu+\gamma(\text{rmin}+\Delta r j))-\frac{\xi}{2}-A[n-i](\omega+\xi(\text{rmin}+\Delta r j)))/(2 \Delta r)-(\omega+\xi(\text{rmin}+\Delta r j))/(2 \Delta x ^2) ) \Delta t \)
+      
+      \(b[j]=1+\Delta t \frac{\omega+\xi(rmin-\Delta r j)}{\Delta r^2} \)
+      
+       \(c[j]=(-((\mu+\gamma(\text{rmin}+\Delta r (j+1)))-\frac{\xi}{2}-A[n-i](\omega+\xi(\text{rmin}+\Delta r(j+1))))/(2 \Delta r)-(\omega+\xi(\text{rmin}+\Delta r(j+1)))/(2 \Delta x ^2) ) \Delta t \)
+      
+    }
+    \(v[m]=v[m]-a[m]\)
+    
+    \(v=tridiagsolve(c[1:m-1], b, a[1:m-1], v)\)
+      
+  }
+  cap=0
+  
+  \For{i=1: n-1} {
+    \If{ \(rmin+\Delta r i+\frac{\Delta r}{2} >0\)} {
+      \(\text{cap}=(\text{rmin}+\Delta r i +\frac{\Delta r}{2}-k)(v[i+1]-v[i])+\text{cap}\)
+    }
+  }
+  
+  \(\text{cap} =\text{cap} \left(e^{-A[m]r_0+C[m]}\right)\)
+\end{algorithm}
+
+\end{document}
